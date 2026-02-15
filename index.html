@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="es" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit Pro - Gestión Inteligente con IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --bg-main: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+        }
+
+        .dark {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f1f5f9;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            transition: background-color 0.3s ease;
+        }
+
+        .kanban-column { min-height: 70vh; }
+        
+        .task-card {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            cursor: pointer;
+        }
+        .task-card:active { cursor: grabbing; }
+        .task-card.dragging { opacity: 0.5; transform: scale(0.95); }
+
+        .dark .task-card { border-color: rgba(51, 65, 85, 0.5); }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .dark .glass-effect {
+            background: rgba(30, 41, 59, 0.8);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        .priority-dot { width: 8px; height: 8px; border-radius: 50%; }
+        
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .animate-slide { animation: slideIn 0.3s ease forwards; }
+
+        .drop-zone-active {
+            background-color: rgba(59, 130, 246, 0.05);
+            outline: 2px dashed #3b82f6;
+            outline-offset: 4px;
+            border-radius: 12px;
+        }
+
+        #timer-display:focus {
+            outline: none;
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.05);
+            border-radius: 20px;
+        }
+
+        .tag-badge {
+            font-size: 9px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            background: #f1f5f9;
+            color: #64748b;
+        }
+        .dark .tag-badge {
+            background: #334155;
+            color: #94a3b8;
+        }
+
+        .dropdown-menu {
+            transform-origin: top right;
+            transition: all 0.2s ease;
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        .dropdown-menu.show {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto;
+        }
+
+        #sidebar-overlay {
+            display: none;
+        }
+        @media (max-width: 1023px) {
+            #sidebar.show-sidebar {
+                transform: translateX(0);
+            }
+            #sidebar-overlay.show-overlay {
+                display: block;
+            }
+        }
+
+        #current-board-name:focus {
+            outline: 2px solid #3b82f6;
+            border-radius: 4px;
+            padding: 0 4px;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        orbit: {
+                            50: '#eff6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="overflow-hidden">
+
+    <!-- Login Modal / Screen -->
+    <div id="auth-screen" class="fixed inset-0 bg-slate-900 z-[200] flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-md p-8 rounded-[32px] shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="orbit" class="text-white" size="32"></i>
+                </div>
+                <h2 class="text-2xl font-bold dark:text-white">Bienvenido a Orbit</h2>
+                <p class="text-sm text-slate-500">Inicia sesión o regístrate para continuar</p>
+            </div>
+            <form onsubmit="app.handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Usuario</label>
+                    <input type="text" id="login-user" required class="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500/20 rounded-2xl outline-none text-sm dark:text-white" placeholder="Tu nombre de usuario">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-2 mb-1 block">Contraseña</label>
+                    <input type="password" id="login-pass" required class="w-full px-5 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500/20 rounded-2xl outline-none text-sm dark:text-white" placeholder="••••••••">
+                </div>
+                <button type="submit" class="w-full py-4 bg-blue-600 text-white rounded-2xl text-base font-bold hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98]">
+                    Acceder / Registrarse
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="sidebar-overlay" onclick="app.toggleSidebar()" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity"></div>
+
+    <div id="app-container" class="hidden h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+        <div id="app" class="flex h-screen w-full overflow-hidden">
+            <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-transform duration-300 -translate-x-full lg:translate-x-0 lg:static lg:inset-0">
+                <div class="p-6 flex items-center justify-between">
+                    <h1 class="text-xl font-bold flex items-center gap-2 tracking-tight dark:text-white">
+                        <div class="p-1.5 bg-blue-600 rounded-lg">
+                            <i data-lucide="orbit" class="text-white" size="18"></i>
+                        </div> 
+                        Orbit <span class="text-blue-500 font-black">PRO</span>
+                    </h1>
+                    <button onclick="app.toggleSidebar()" class="lg:hidden text-slate-500 hover:text-slate-800 dark:hover:text-white transition"><i data-lucide="x" size="20"></i></button>
+                </div>
+                
+                <nav class="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-2">Menú Principal</p>
+                    <button onclick="app.setTab('kanban')" id="btn-kanban" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-400 text-sm active-tab">
+                        <i data-lucide="layout-grid" size="18"></i> Tablero
+                    </button>
+                    <button onclick="app.setTab('calendar')" id="btn-calendar" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-400 text-sm">
+                        <i data-lucide="calendar" size="18"></i> Calendario
+                    </button>
+                    <button onclick="app.setTab('stats')" id="btn-stats" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-400 text-sm">
+                        <i data-lucide="line-chart" size="18"></i> Rendimiento
+                    </button>
+                    <button onclick="app.setTab('timer')" id="btn-timer" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-slate-600 dark:text-slate-400 text-sm">
+                        <i data-lucide="brain-circuit" size="18"></i> Enfoque
+                    </button>
+
+                    <div class="pt-6">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-2">Asistente</p>
+                        <div class="p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100/50 dark:border-blue-800/20">
+                            <div id="ai-chat-response" class="text-[11px] text-slate-600 dark:text-slate-400 mb-3 min-h-[40px] leading-relaxed">
+                                Hola, soy tu Co-Pilot. ¿Analizamos tus tareas de hoy?
+                            </div>
+                            <div class="relative">
+                                <input type="text" id="ai-chat-input" class="w-full text-xs p-2.5 pr-8 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white dark:bg-slate-800 dark:text-white" placeholder="Pregunta algo..." onkeypress="if(event.key === 'Enter') app.askGemini()">
+                                <button onclick="app.askGemini()" class="absolute right-2.5 top-2.5 text-blue-500"><i data-lucide="sparkles" size="14"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+
+                <div class="p-4 space-y-3">
+                    <button onclick="app.openTaskModal()" class="w-full bg-blue-600 text-white py-3 rounded-xl text-sm font-bold hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-[0.98]">
+                        <i data-lucide="plus" size="18"></i> Nueva Tarea
+                    </button>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex items-center gap-2">
+                            <button onclick="app.toggleDarkMode()" class="flex-1 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center gap-2">
+                                <i data-lucide="moon" size="14"></i> Tema
+                            </button>
+                            <button onclick="app.exportHTML()" class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                                <i data-lucide="download-cloud" size="14"></i>
+                            </button>
+                        </div>
+                        <button onclick="app.logout()" class="w-full py-2 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/20 transition flex items-center justify-center gap-2">
+                            <i data-lucide="log-out" size="14"></i> Cerrar Sesión
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="flex-1 flex flex-col overflow-hidden">
+                <header class="h-16 border-b border-slate-200 dark:border-slate-800 glass-effect flex items-center justify-between px-4 md:px-6 shrink-0 z-40">
+                    <div class="flex items-center gap-3">
+                        <button onclick="app.toggleSidebar()" class="lg:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"><i data-lucide="menu" size="20"></i></button>
+                        <div class="relative">
+                            <div class="flex flex-col items-start text-left">
+                                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Espacio de Trabajo</span>
+                                <div class="flex items-center gap-2">
+                                    <h2 id="current-board-name" 
+                                        contenteditable="true" 
+                                        onblur="app.updateBoardName(this.innerText)"
+                                        onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                                        class="text-xs md:text-sm font-bold text-slate-800 dark:text-white min-w-[50px]">
+                                        Cargando...
+                                    </h2>
+                                    <button onclick="app.toggleBoardDropdown(event)" class="text-slate-400 hover:text-blue-500 transition">
+                                        <i data-lucide="chevron-down" size="14"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="board-list-dropdown" class="absolute top-full left-0 mt-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl hidden z-50 p-2 animate-slide"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 flex-1 max-w-[200px] md:max-w-md mx-2 md:mx-8">
+                        <div class="relative w-full">
+                            <i data-lucide="search" class="absolute left-3 top-2.5 text-slate-400" size="16"></i>
+                            <input type="text" id="search-tasks" oninput="app.handleSearch(this.value)" placeholder="Buscar..." class="w-full pl-9 pr-3 py-2 bg-slate-100 dark:bg-slate-800 border-transparent focus:bg-white dark:focus:bg-slate-900 border focus:border-blue-500/30 rounded-xl text-xs md:text-sm outline-none transition-all dark:text-white">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-1 md:gap-3">
+                        <button onclick="app.saveData(true)" class="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition" title="Guardar cambios">
+                            <i data-lucide="save" size="20"></i>
+                        </button>
+                        <div class="h-6 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden md:block"></div>
+                        <div class="flex flex-col items-end hidden md:flex">
+                            <span id="display-username" class="text-[10px] font-bold text-slate-800 dark:text-white leading-none mb-1">Cargando...</span>
+                            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-tight">Pro Member</span>
+                        </div>
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white text-[10px] font-bold shadow-md" id="user-avatar">ME</div>
+                    </div>
+                </header>
+
+                <div class="px-4 md:px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between bg-white dark:bg-slate-900/50 gap-3 md:gap-0">
+                    <div id="kanban-tools" class="flex items-center gap-2 overflow-x-auto custom-scrollbar w-full md:w-auto pb-1 md:pb-0">
+                        <span class="text-[10px] md:text-xs font-semibold text-slate-500 mr-1 shrink-0">Clasificar:</span>
+                        <button onclick="app.applyAction('sort', 'date')" class="px-2 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition shrink-0 uppercase">Fecha</button>
+                        <button onclick="app.applyAction('sort', 'priority')" class="px-2 md:px-3 py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition shrink-0 uppercase">Prioridad</button>
+                        <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1 shrink-0"></div>
+                        <div id="tag-filters" class="flex items-center gap-2"></div>
+                    </div>
+
+                    <div id="timer-tools" class="hidden flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full md:w-auto justify-center">
+                        <button onclick="app.setTimerMode('pomodoro')" id="mode-pomodoro" class="flex-1 md:flex-none px-3 md:px-4 py-1.5 text-[9px] md:text-[10px] font-bold rounded-lg transition-all">POMODORO</button>
+                        <button onclick="app.setTimerMode('break')" id="mode-break" class="flex-1 md:flex-none px-3 md:px-4 py-1.5 text-[9px] md:text-[10px] font-bold rounded-lg transition-all">DESCANSO</button>
+                        <button onclick="app.setTimerMode('stopwatch')" id="mode-stopwatch" class="flex-1 md:flex-none px-3 md:px-4 py-1.5 text-[9px] md:text-[10px] font-bold rounded-lg transition-all">CRONÓMETRO</button>
+                    </div>
+                </div>
+
+                <div id="view-container" class="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-slate-50 dark:bg-slate-950">
+                    <div id="view-kanban" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 h-full"></div>
+
+                    <div id="view-calendar" class="hidden animate-slide">
+                        <div class="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto">
+                            <div class="flex justify-between items-center mb-6 md:mb-8 min-w-[300px]">
+                                <h3 id="calendar-month-name" class="text-base md:text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2"></h3>
+                                <div class="flex gap-2">
+                                    <button onclick="app.changeMonth(-1)" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition dark:text-white"><i data-lucide="chevron-left" size="18"></i></button>
+                                    <button onclick="app.changeMonth(1)" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition dark:text-white"><i data-lucide="chevron-right" size="18"></i></button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 md:gap-3 min-w-[600px] md:min-w-0" id="calendar-grid"></div>
+                        </div>
+                    </div>
+
+                    <div id="view-stats" class="hidden space-y-6 md:space-y-8 animate-slide">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg md:text-xl font-bold dark:text-white">Análisis de Rendimiento</h3>
+                                <p class="text-[10px] md:text-xs text-slate-500">Métricas basadas en tus tareas completadas.</p>
+                            </div>
+                            <div class="relative inline-block text-left" id="stats-dropdown-container">
+                                <button onclick="app.toggleStatsDropdown()" class="inline-flex justify-center items-center gap-2 w-full md:w-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm px-4 py-2.5 bg-white dark:bg-slate-900 text-xs md:text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95">
+                                    <i data-lucide="calendar-range" size="16"></i>
+                                    <span id="current-stats-period-label">Mensual</span>
+                                    <i data-lucide="chevron-down" size="14" class="ml-1"></i>
+                                </button>
+                                <div id="stats-period-dropdown" class="dropdown-menu absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 z-[60] p-2">
+                                    <button onclick="app.setStatsPeriod('all', 'Total')" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 rounded-xl transition">Total</button>
+                                    <button onclick="app.setStatsPeriod('day', 'Diario')" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 rounded-xl transition">Diario</button>
+                                    <button onclick="app.setStatsPeriod('week', 'Semanal')" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 rounded-xl transition">Semanal</button>
+                                    <button onclick="app.setStatsPeriod('month', 'Mensual')" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 rounded-xl transition">Mensual</button>
+                                    <button onclick="app.setStatsPeriod('year', 'Anual')" class="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 rounded-xl transition">Anual</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                            <div class="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm text-center md:text-left">
+                                <p class="text-[9px] md:text-xs font-bold text-slate-400 uppercase mb-2">Total</p>
+                                <h4 id="stat-total" class="text-xl md:text-3xl font-black text-slate-800 dark:text-white">0</h4>
+                            </div>
+                            <div class="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm text-center md:text-left">
+                                <p class="text-[9px] md:text-xs font-bold text-slate-400 uppercase mb-2">Hechas</p>
+                                <h4 id="stat-completed" class="text-xl md:text-3xl font-black text-emerald-500">0</h4>
+                            </div>
+                            <div class="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm text-center md:text-left">
+                                <p class="text-[9px] md:text-xs font-bold text-slate-400 uppercase mb-2">Progreso</p>
+                                <h4 id="stat-percent" class="text-xl md:text-3xl font-black text-blue-500">0%</h4>
+                            </div>
+                            <div class="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm text-center md:text-left">
+                                <p class="text-[9px] md:text-xs font-bold text-slate-400 uppercase mb-2">Subtareas</p>
+                                <h4 id="stat-subtasks" class="text-xl md:text-3xl font-black text-indigo-500">0</h4>
+                            </div>
+                        </div>
+                        <div class="bg-white dark:bg-slate-900 p-4 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm h-72 md:h-96">
+                            <canvas id="productivityChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div id="view-timer" class="hidden h-full flex flex-col items-center justify-center animate-slide py-10 md:py-0">
+                        <div class="text-center relative w-full">
+                            <div class="absolute -inset-10 md:-inset-20 bg-blue-500/10 dark:bg-blue-500/5 blur-[60px] md:blur-[100px] rounded-full -z-10"></div>
+                            <p id="timer-status" class="text-[9px] md:text-xs font-bold text-blue-500 uppercase tracking-[0.3em] mb-4 md:mb-6">MODO ENFOQUE</p>
+                            <h2 id="timer-display" contenteditable="true" onfocus="app.pauseForEdit()" onblur="app.handleTimerEdit(this.innerText)" class="text-[70px] sm:text-[100px] md:text-[140px] font-black tracking-tighter tabular-nums text-slate-800 dark:text-white leading-none mb-2 transition-all px-4 py-1">25:00</h2>
+                            <p class="text-[8px] md:text-[10px] text-slate-400 font-bold mb-8 md:mb-10 uppercase tracking-widest flex items-center justify-center gap-1 md:gap-2">
+                                <i data-lucide="info" size="12"></i> Toca para editar el tiempo
+                            </p>
+                            <div class="flex items-center justify-center gap-6 md:gap-8">
+                                <button onclick="app.toggleTimer()" id="timer-main-btn" class="w-16 h-16 md:w-20 md:h-20 rounded-2xl md:rounded-3xl bg-blue-600 text-white flex items-center justify-center shadow-xl hover:bg-blue-700 transition transform hover:scale-105 active:scale-95">
+                                    <i id="timer-icon" data-lucide="play" size="28" fill="currentColor"></i>
+                                </button>
+                                <button onclick="app.resetTimer()" class="w-12 h-12 md:w-16 md:h-16 rounded-2xl md:rounded-3xl bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center hover:bg-slate-300 dark:hover:bg-slate-700 transition">
+                                    <i data-lucide="rotate-ccw" size="20"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <div id="task-modal" class="hidden fixed inset-0 bg-slate-950/60 flex items-center justify-center z-[100] backdrop-blur-md p-4">
+                <div class="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[24px] md:rounded-[32px] shadow-2xl overflow-hidden animate-slide">
+                    <div class="p-6 md:p-8 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                        <div>
+                            <h3 id="modal-title" class="text-lg md:text-xl font-bold text-slate-800 dark:text-white">Nueva Tarea</h3>
+                            <p class="text-[10px] md:text-xs text-slate-500">Define tus próximos objetivos.</p>
+                        </div>
+                        <button onclick="app.closeTaskModal()" class="p-2 text-slate-400 hover:text-slate-600 transition"><i data-lucide="x" size="20"></i></button>
+                    </div>
+                    <form onsubmit="app.handleTaskSubmit(event)" class="p-6 md:p-8 space-y-4 md:space-y-6">
+                        <div class="space-y-3 md:space-y-4">
+                            <input type="text" id="task-title" required class="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500/20 rounded-xl md:rounded-2xl outline-none text-sm md:text-base font-semibold dark:text-white" placeholder="¿Qué nombre tiene la tarea?">
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+                                <div class="space-y-1">
+                                    <label class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase ml-2">Prioridad</label>
+                                    <select id="task-priority" class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl md:rounded-2xl outline-none text-[11px] md:text-xs font-medium dark:text-white border-2 border-transparent focus:border-blue-500/20">
+                                        <option value="low">🟢 Baja</option>
+                                        <option value="medium" selected>🟡 Media</option>
+                                        <option value="high">🔴 Alta</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase ml-2">Etiqueta</label>
+                                    <input type="text" id="task-tag" class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl md:rounded-2xl outline-none text-[11px] md:text-xs dark:text-white border-2 border-transparent focus:border-blue-500/20" placeholder="Ej: Trabajo">
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase ml-2">Fecha</label>
+                                    <input type="date" id="task-date" required class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl md:rounded-2xl outline-none text-[11px] md:text-xs dark:text-white border-2 border-transparent focus:border-blue-500/20">
+                                </div>
+                            </div>
+
+                            <textarea id="task-desc" rows="3" class="w-full px-4 md:px-5 py-3 md:py-4 bg-slate-50 dark:bg-slate-800 rounded-xl md:rounded-2xl outline-none text-xs md:text-sm dark:text-white border-2 border-transparent focus:border-blue-500/20" placeholder="Descripción opcional..."></textarea>
+                        </div>
+
+                        <button type="submit" id="modal-submit-btn" class="w-full py-3 md:py-4 bg-blue-600 text-white rounded-xl md:rounded-2xl text-sm md:text-base font-bold hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all active:scale-[0.98]">
+                            Crear Tarea
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-save" class="fixed bottom-6 right-6 md:bottom-8 md:right-8 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 md:px-6 py-3 md:py-4 rounded-xl md:rounded-2xl shadow-2xl flex items-center gap-3 transform translate-y-32 transition-transform duration-300 z-[200]">
+        <div class="w-5 h-5 md:w-6 md:h-6 bg-emerald-500 rounded-full flex items-center justify-center">
+            <i data-lucide="check" size="12" class="text-white"></i>
+        </div>
+        <span class="text-xs md:text-sm font-bold" id="toast-text">Cambios sincronizados</span>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+
+        const app = {
+            currentTab: 'kanban',
+            currentDate: new Date(),
+            searchTerm: '',
+            activeTagFilter: 'all',
+            statsPeriod: 'month', 
+            darkMode: false,
+            
+            // AUTH STATE
+            currentUser: null,
+            usersData: {}, // { username: { password, boards, allTasks } }
+
+            currentBoardId: 'board_1',
+            boards: [],
+            allTasks: [],
+            editingTaskId: null,
+            timerMode: 'pomodoro', 
+            timerRunning: false,
+            timerSeconds: 1500, 
+            timerInterval: null,
+            audioAlert: new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'),
+
+            init() {
+                this.loadGlobalUsers();
+                this.checkSession();
+                this.detectTheme();
+                
+                lucide.createIcons();
+                window.addEventListener('click', (e) => {
+                    if (!e.target.closest('#stats-dropdown-container')) {
+                        document.getElementById('stats-period-dropdown')?.classList.remove('show');
+                    }
+                    if (!e.target.closest('.relative')) {
+                        document.getElementById('board-list-dropdown')?.classList.add('hidden');
+                    }
+                });
+            },
+
+            // USER MANAGEMENT
+            loadGlobalUsers() {
+                const saved = localStorage.getItem('orbit_users_db');
+                if (saved) this.usersData = JSON.parse(saved);
+            },
+
+            saveGlobalUsers() {
+                localStorage.setItem('orbit_users_db', JSON.stringify(this.usersData));
+            },
+
+            checkSession() {
+                const session = localStorage.getItem('orbit_active_user');
+                if (session && this.usersData[session]) {
+                    this.loginAs(session);
+                } else {
+                    document.getElementById('auth-screen').classList.remove('hidden');
+                    document.getElementById('app-container').classList.add('hidden');
+                }
+            },
+
+            handleLogin(e) {
+                e.preventDefault();
+                const user = document.getElementById('login-user').value.trim();
+                const pass = document.getElementById('login-pass').value;
+
+                if (!user || !pass) return;
+
+                if (this.usersData[user]) {
+                    // Check Password
+                    if (this.usersData[user].password === pass) {
+                        this.loginAs(user);
+                    } else {
+                        alert("Contraseña incorrecta.");
+                    }
+                } else {
+                    // Register new user
+                    this.usersData[user] = {
+                        password: pass,
+                        boards: [{ id: 'board_1', name: 'Proyecto Principal' }],
+                        allTasks: []
+                    };
+                    this.saveGlobalUsers();
+                    this.loginAs(user);
+                }
+            },
+
+            loginAs(username) {
+                this.currentUser = username;
+                localStorage.setItem('orbit_active_user', username);
+                
+                // Load user data
+                const data = this.usersData[username];
+                this.boards = data.boards || [];
+                this.allTasks = data.allTasks || [];
+                this.currentBoardId = this.boards[0]?.id || 'board_1';
+
+                // UI Update
+                document.getElementById('display-username').innerText = username;
+                document.getElementById('user-avatar').innerText = username.substring(0, 2).toUpperCase();
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-container').classList.remove('hidden');
+
+                this.renderBoardList();
+                this.renderKanban();
+                lucide.createIcons();
+            },
+
+            logout() {
+                localStorage.removeItem('orbit_active_user');
+                this.currentUser = null;
+                location.reload();
+            },
+
+            detectTheme() {
+                if (localStorage.getItem('orbit_theme') === 'dark' || 
+                    (!localStorage.getItem('orbit_theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    this.toggleDarkMode(true);
+                }
+            },
+
+            toggleDarkMode(force = null) {
+                this.darkMode = force !== null ? force : !this.darkMode;
+                document.documentElement.classList.toggle('dark', this.darkMode);
+                localStorage.setItem('orbit_theme', this.darkMode ? 'dark' : 'light');
+                if (this.currentTab === 'stats') this.renderStats();
+            },
+
+            toggleSidebar() {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebar-overlay');
+                sidebar.classList.toggle('show-sidebar');
+                overlay.classList.toggle('show-overlay');
+            },
+
+            saveData(showToast = false) {
+                if (!this.currentUser) return;
+                
+                // Actualizar DB global
+                this.usersData[this.currentUser].boards = this.boards;
+                this.usersData[this.currentUser].allTasks = this.allTasks;
+                this.saveGlobalUsers();
+
+                if (showToast) this.showToast("¡Datos guardados!");
+            },
+
+            showToast(text) {
+                const toast = document.getElementById('toast-save');
+                document.getElementById('toast-text').innerText = text;
+                toast.classList.replace('translate-y-32', 'translate-y-0');
+                setTimeout(() => toast.classList.replace('translate-y-0', 'translate-y-32'), 3000);
+            },
+
+            toggleBoardDropdown(event) {
+                event.stopPropagation();
+                const dropdown = document.getElementById('board-list-dropdown');
+                dropdown.classList.toggle('hidden');
+            },
+
+            updateBoardName(newName) {
+                const cleanName = newName.trim();
+                if (!cleanName) return;
+                const board = this.boards.find(b => b.id === this.currentBoardId);
+                if (board) {
+                    board.name = cleanName;
+                    this.saveData();
+                    this.renderBoardList();
+                }
+            },
+
+            renderBoardList() {
+                const list = document.getElementById('board-list-dropdown');
+                const activeBoard = this.boards.find(b => b.id === this.currentBoardId) || this.boards[0];
+                if(activeBoard) document.getElementById('current-board-name').innerText = activeBoard.name;
+                
+                list.innerHTML = `
+                    <p class="text-[9px] font-bold text-slate-400 uppercase p-2 border-b dark:border-slate-700">Mis Proyectos</p>
+                    <div class="max-h-48 overflow-y-auto custom-scrollbar">
+                        ${this.boards.map(b => `
+                            <div onclick="app.switchBoard('${b.id}')" class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer transition ${b.id === this.currentBoardId ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-slate-600 dark:text-slate-400'}">
+                                <span class="text-xs font-bold truncate max-w-[150px]">${b.name}</span>
+                                ${b.id === this.currentBoardId ? '<i data-lucide="check" size="12"></i>' : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="app.createNewBoard(event)" class="w-full mt-2 p-3 text-left text-xs font-bold text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 rounded-xl flex items-center gap-2">
+                        <i data-lucide="plus" size="14"></i> Crear nuevo tablero
+                    </button>
+                `;
+                lucide.createIcons();
+            },
+
+            switchBoard(id) {
+                this.currentBoardId = id;
+                this.saveData();
+                this.renderBoardList();
+                this.renderKanban();
+                document.getElementById('board-list-dropdown').classList.add('hidden');
+                if(this.currentTab === 'calendar') this.renderCalendar();
+            },
+
+            createNewBoard(event) {
+                event.stopPropagation();
+                const name = prompt("Nombre del nuevo tablero:");
+                if (name && name.trim()) {
+                    const id = 'b_' + Date.now();
+                    this.boards.push({ id, name: name.trim() });
+                    this.switchBoard(id);
+                }
+            },
+
+            renderKanban() {
+                const container = document.getElementById('view-kanban');
+                const cols = [
+                    { id: 'todo', label: 'Pendientes', color: 'blue' },
+                    { id: 'doing', label: 'En Proceso', color: 'amber' },
+                    { id: 'done', label: 'Completado', color: 'emerald' }
+                ];
+                
+                let filtered = this.allTasks
+                    .filter(t => t.boardId === this.currentBoardId)
+                    .filter(t => t.title.toLowerCase().includes(this.searchTerm.toLowerCase()) || (t.desc && t.desc.toLowerCase().includes(this.searchTerm.toLowerCase())));
+
+                if (this.activeTagFilter !== 'all') {
+                    filtered = filtered.filter(t => t.tag === this.activeTagFilter);
+                }
+
+                this.renderTagFilters();
+
+                container.innerHTML = cols.map(col => {
+                    const tasks = filtered.filter(t => t.status === col.id);
+                    return `
+                        <div class="flex flex-col gap-4 md:gap-6 drop-zone" data-status="${col.id}">
+                            <div class="flex items-center justify-between px-2">
+                                <h3 class="text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-${col.color}-500 shadow-sm shadow-${col.color}-500/50"></span>
+                                    ${col.label}
+                                </h3>
+                                <span class="text-[9px] md:text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-full text-slate-500">${tasks.length}</span>
+                            </div>
+                            <div class="flex-1 space-y-4">
+                                ${tasks.map(t => this.createTaskCardHTML(t)).join('')}
+                                <button onclick="app.openTaskModal('${col.id}')" class="w-full py-3 md:py-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-400 hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all flex items-center justify-center gap-2 text-[10px] md:text-xs font-bold uppercase tracking-widest">
+                                    <i data-lucide="plus-circle" size="16"></i> Añadir
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                lucide.createIcons();
+                this.setupDragAndDrop();
+            },
+
+            renderTagFilters() {
+                const filterContainer = document.getElementById('tag-filters');
+                const tags = [...new Set(this.allTasks.filter(t => t.boardId === this.currentBoardId && t.tag).map(t => t.tag))];
+                
+                filterContainer.innerHTML = `
+                    <button onclick="app.filterByTag('all')" class="px-2 md:px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-bold transition shrink-0 ${this.activeTagFilter === 'all' ? 'bg-blue-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}">TODAS</button>
+                    ${tags.map(tag => `
+                        <button onclick="app.filterByTag('${tag}')" class="px-2 md:px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-bold transition shrink-0 ${this.activeTagFilter === tag ? 'bg-blue-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}">${tag.toUpperCase()}</button>
+                    `).join('')}
+                `;
+            },
+
+            filterByTag(tag) {
+                this.activeTagFilter = tag;
+                this.renderKanban();
+            },
+
+            createTaskCardHTML(t) {
+                const subDone = t.subtasks?.filter(s => s.done).length || 0;
+                const subTotal = t.subtasks?.length || 0;
+                const progress = subTotal > 0 ? (subDone / subTotal) * 100 : 0;
+
+                return `
+                    <div onclick="app.openEditTaskModal(${t.id})" class="task-card bg-white dark:bg-slate-900 p-4 md:p-5 rounded-[20px] md:rounded-[24px] shadow-sm hover:shadow-xl dark:shadow-none transition-all group relative animate-slide" draggable="true" ondragstart="app.onDragStart(event, ${t.id})">
+                        <div class="flex justify-between items-start mb-3">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-[8px] md:text-[9px] font-black uppercase px-2 py-1 rounded-lg ${this.getPriorityClass(t.priority)}">
+                                    ${t.priority}
+                                </span>
+                                ${t.tag ? `<span class="tag-badge text-[8px]">${t.tag}</span>` : ''}
+                            </div>
+                            <div class="flex gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition">
+                                <button onclick="event.stopPropagation(); app.deleteTask(${t.id})" class="p-1 text-slate-300 hover:text-red-500"><i data-lucide="trash-2" size="14"></i></button>
+                            </div>
+                        </div>
+                        <h4 class="text-xs md:text-sm font-bold text-slate-800 dark:text-white mb-2 leading-tight">${t.title}</h4>
+                        <p class="text-[10px] md:text-[11px] text-slate-500 dark:text-slate-400 mb-4 line-clamp-2 italic">${t.desc || '...'}</p>
+                        
+                        ${subTotal > 0 ? `
+                            <div class="mb-4">
+                                <div class="flex justify-between text-[8px] md:text-[9px] font-bold text-slate-400 mb-1">
+                                    <span>Progreso</span>
+                                    <span>${subDone}/${subTotal}</span>
+                                </div>
+                                <div class="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-blue-500" style="width: ${progress}%"></div>
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <div class="pt-3 md:pt-4 border-t border-slate-50 dark:border-slate-800 flex items-center justify-between">
+                            <div class="flex items-center gap-1.5 text-slate-400">
+                                <i data-lucide="clock" size="10"></i>
+                                <span class="text-[9px] md:text-[10px] font-bold">${t.date}</span>
+                            </div>
+                            <button onclick="event.stopPropagation(); app.addSubtaskPrompt(${t.id})" class="p-1 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
+                                <i data-lucide="list-plus" size="14"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            },
+
+            getPriorityClass(p) {
+                if(p === 'high') return 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400';
+                if(p === 'medium') return 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400';
+                return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400';
+            },
+
+            setupDragAndDrop() {
+                const zones = document.querySelectorAll('.drop-zone');
+                zones.forEach(zone => {
+                    zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('drop-zone-active'); };
+                    zone.ondragleave = () => zone.classList.remove('drop-zone-active');
+                    zone.ondrop = (e) => {
+                        e.preventDefault();
+                        zone.classList.remove('drop-zone-active');
+                        const taskId = e.dataTransfer.getData('text/plain');
+                        const newStatus = zone.dataset.status;
+                        this.moveTaskStatus(parseInt(taskId), newStatus);
+                    };
+                });
+            },
+
+            onDragStart(e, id) {
+                e.dataTransfer.setData('text/plain', id);
+                e.target.classList.add('dragging');
+                setTimeout(() => e.target.classList.remove('dragging'), 0);
+            },
+
+            moveTaskStatus(id, newStatus) {
+                const task = this.allTasks.find(t => t.id === id);
+                if (task && task.status !== newStatus) {
+                    task.status = newStatus;
+                    this.saveData();
+                    this.renderKanban();
+                    if(this.currentTab === 'stats') this.renderStats();
+                }
+            },
+
+            toggleSubtask(taskId, subId) {
+                const task = this.allTasks.find(t => t.id === taskId);
+                const sub = task.subtasks.find(s => s.id === subId);
+                sub.done = !sub.done;
+                this.saveData();
+                this.renderKanban();
+            },
+
+            addSubtaskPrompt(taskId) {
+                const text = prompt("Nueva subtarea:");
+                if (text) {
+                    const task = this.allTasks.find(t => t.id === taskId);
+                    if (!task.subtasks) task.subtasks = [];
+                    task.subtasks.push({ id: Date.now(), text, done: false });
+                    this.saveData();
+                    this.renderKanban();
+                }
+            },
+
+            handleSearch(val) {
+                this.searchTerm = val;
+                this.renderKanban();
+            },
+
+            async askGemini() {
+                const input = document.getElementById('ai-chat-input');
+                const display = document.getElementById('ai-chat-response');
+                const query = input.value;
+                if (!query) return;
+                display.innerHTML = '<span class="animate-pulse">Consultando...</span>';
+                input.value = "";
+                const taskContext = this.allTasks.filter(t => t.boardId === this.currentBoardId).map(t => `${t.title} (${t.status})`).join(", ");
+                const prompt = `Actúa como un gestor de productividad Pro. Contexto actual de tareas: [${taskContext}]. Usuario pregunta: "${query}". Responde en español brevemente.`;
+                try {
+                    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    display.textContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "No pude conectar ahora.";
+                } catch (e) { display.textContent = "Error de conexión."; }
+            },
+
+            setTimerMode(mode) {
+                if (this.timerRunning) this.toggleTimer(); 
+                this.timerMode = mode;
+                if (mode === 'pomodoro') this.timerSeconds = 1500;
+                else if (mode === 'break') this.timerSeconds = 300;
+                else this.timerSeconds = 0;
+                ['pomodoro', 'break', 'stopwatch'].forEach(m => {
+                    const btn = document.getElementById(`mode-${m}`);
+                    if (btn) btn.className = `flex-1 md:flex-none px-3 md:px-4 py-1.5 text-[9px] md:text-[10px] font-bold rounded-lg transition-all ${m === mode ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`;
+                });
+                document.getElementById('timer-status').innerText = mode === 'break' ? 'MODO DESCANSO' : 'MODO ENFOQUE';
+                this.updateTimerDisplay();
+            },
+
+            toggleTimer() {
+                this.timerRunning = !this.timerRunning;
+                const icon = document.getElementById('timer-icon');
+                const btn = document.getElementById('timer-main-btn');
+                if (this.timerRunning) {
+                    btn.classList.replace('bg-blue-600', 'bg-slate-800');
+                    icon.setAttribute('data-lucide', 'pause');
+                    this.timerInterval = setInterval(() => {
+                        if (this.timerMode === 'pomodoro' || this.timerMode === 'break') {
+                            if (this.timerSeconds > 0) this.timerSeconds--;
+                            else { this.toggleTimer(); this.audioAlert.play(); this.showToast("¡Sesión terminada!"); }
+                        } else { this.timerSeconds++; }
+                        this.updateTimerDisplay();
+                    }, 1000);
+                } else {
+                    btn.classList.replace('bg-slate-800', 'bg-blue-600');
+                    icon.setAttribute('data-lucide', 'play');
+                    clearInterval(this.timerInterval);
+                }
+                lucide.createIcons();
+            },
+
+            pauseForEdit() { if (this.timerRunning) this.toggleTimer(); },
+            handleTimerEdit(val) {
+                const parts = val.split(':');
+                let minutes = parseInt(parts[0]) || 0;
+                let seconds = parseInt(parts[1]) || 0;
+                this.timerSeconds = (minutes * 60) + seconds;
+                this.updateTimerDisplay();
+            },
+
+            resetTimer() { if (this.timerRunning) this.toggleTimer(); this.setTimerMode(this.timerMode); },
+            updateTimerDisplay() {
+                const mins = Math.floor(this.timerSeconds / 60);
+                const secs = this.timerSeconds % 60;
+                document.getElementById('timer-display').innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            },
+
+            toggleStatsDropdown() {
+                document.getElementById('stats-period-dropdown').classList.toggle('show');
+            },
+
+            setStatsPeriod(period, label) {
+                this.statsPeriod = period;
+                document.getElementById('current-stats-period-label').innerText = label;
+                document.getElementById('stats-period-dropdown').classList.remove('show');
+                this.renderStats();
+            },
+
+            renderStats() {
+                const now = new Date();
+                const todayStr = now.toISOString().split('T')[0];
+                let tasks = this.allTasks.filter(t => t.boardId === this.currentBoardId);
+                
+                if (this.statsPeriod === 'day') tasks = tasks.filter(t => t.date === todayStr);
+                else if (this.statsPeriod === 'week') {
+                    const weekAgo = new Date();
+                    weekAgo.setDate(now.getDate() - 7);
+                    tasks = tasks.filter(t => new Date(t.date) >= weekAgo);
+                } else if (this.statsPeriod === 'month') {
+                    tasks = tasks.filter(t => {
+                        const d = new Date(t.date);
+                        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                    });
+                } else if (this.statsPeriod === 'year') {
+                    tasks = tasks.filter(t => new Date(t.date).getFullYear() === now.getFullYear());
+                }
+
+                const total = tasks.length, completed = tasks.filter(t => t.status === 'done').length;
+                const doing = tasks.filter(t => t.status === 'doing').length;
+                const todo = tasks.filter(t => t.status === 'todo').length;
+                const subs = tasks.reduce((acc, t) => acc + (t.subtasks?.length || 0), 0);
+
+                document.getElementById('stat-total').innerText = total;
+                document.getElementById('stat-completed').innerText = completed;
+                document.getElementById('stat-percent').innerText = total > 0 ? Math.round((completed/total)*100)+'%' : '0%';
+                document.getElementById('stat-subtasks').innerText = subs;
+
+                const ctx = document.getElementById('productivityChart').getContext('2d');
+                if (this.chart) this.chart.destroy();
+                this.chart = new Chart(ctx, {
+                    type: 'doughnut', data: {
+                        labels: ['Pendientes', 'En Proceso', 'Hechas'],
+                        datasets: [{ data: [todo, doing, completed], backgroundColor: ['#6366f1', '#f59e0b', '#10b981'], borderWidth: 0 }]
+                    }, options: { 
+                        maintainAspectRatio: false, cutout: '80%', 
+                        plugins: { legend: { position: 'bottom', labels: { color: document.documentElement.classList.contains('dark') ? '#94a3b8' : '#64748b', font: { weight: 'bold', size: 10 } } } } 
+                    }
+                });
+            },
+
+            renderCalendar() {
+                const grid = document.getElementById('calendar-grid'), title = document.getElementById('calendar-month-name');
+                const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                title.innerText = `${months[this.currentDate.getMonth()]} ${this.currentDate.getFullYear()}`;
+                grid.innerHTML = '';
+                ['D', 'L', 'M', 'M', 'J', 'V', 'S'].forEach(d => grid.innerHTML += `<div class="text-[9px] font-black text-slate-400 uppercase text-center py-2">${d}</div>`);
+                const firstDay = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1).getDay();
+                const daysInMonth = new Date(this.currentDate.getFullYear(), this.currentDate.getMonth() + 1, 0).getDate();
+                for(let i=0; i<firstDay; i++) grid.innerHTML += `<div class="h-16 md:h-24 rounded-2xl bg-slate-50 dark:bg-slate-800/20"></div>`;
+                for(let i=1; i<=daysInMonth; i++) {
+                    const dateStr = `${this.currentDate.getFullYear()}-${(this.currentDate.getMonth()+1).toString().padStart(2,'0')}-${i.toString().padStart(2,'0')}`;
+                    const dayTasks = this.allTasks.filter(t => t.boardId === this.currentBoardId && t.date === dateStr);
+                    grid.innerHTML += `
+                        <div class="h-16 md:h-24 p-1.5 md:p-2 rounded-xl md:rounded-2xl border border-slate-100 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition overflow-hidden relative">
+                            <span class="text-[8px] md:text-[10px] font-bold text-slate-400">${i}</span>
+                            <div class="flex flex-col gap-1 mt-1">
+                                ${dayTasks.slice(0, 2).map(t => `
+                                    <div class="flex flex-col gap-0.5">
+                                        <div class="text-[6px] md:text-[8px] font-semibold text-slate-700 dark:text-slate-300 truncate leading-none">${t.title}</div>
+                                        <div class="w-full h-0.5 md:h-1 rounded-full bg-${t.priority === 'high' ? 'red' : (t.priority === 'medium' ? 'amber' : 'emerald')}-500"></div>
+                                    </div>
+                                `).join('')}
+                                ${dayTasks.length > 2 ? `<span class="text-[6px] font-bold text-slate-400">+${dayTasks.length-2}</span>` : ''}
+                            </div>
+                        </div>`;
+                }
+            },
+
+            changeMonth(dir) { this.currentDate.setMonth(this.currentDate.getMonth() + dir); this.renderCalendar(); },
+
+            setTab(tab) {
+                if (window.innerWidth < 1024 && document.getElementById('sidebar').classList.contains('show-sidebar')) this.toggleSidebar();
+                ['kanban', 'calendar', 'stats', 'timer'].forEach(t => {
+                    document.getElementById(`view-${t}`).classList.add('hidden');
+                    document.getElementById(`btn-${t}`).classList.remove('active-tab', 'bg-blue-50', 'text-blue-600');
+                });
+                document.getElementById(`view-${tab}`).classList.remove('hidden');
+                document.getElementById(`btn-${tab}`).classList.add('active-tab', 'bg-blue-50', 'text-blue-600');
+                document.getElementById('kanban-tools').classList.toggle('hidden', tab !== 'kanban');
+                document.getElementById('timer-tools').classList.toggle('hidden', tab !== 'timer');
+                this.currentTab = tab;
+                if(tab === 'stats') this.renderStats();
+                if(tab === 'calendar') this.renderCalendar();
+                if(tab === 'kanban') this.renderKanban();
+                lucide.createIcons();
+            },
+
+            openTaskModal(status = 'todo') {
+                this.editingTaskId = null;
+                this.modalStatus = status;
+                document.getElementById('modal-title').innerText = "Nueva Tarea";
+                document.getElementById('modal-submit-btn').innerText = "Crear Tarea";
+                document.getElementById('task-modal').classList.remove('hidden');
+                document.getElementById('task-title').value = '';
+                document.getElementById('task-tag').value = '';
+                document.getElementById('task-desc').value = '';
+                document.getElementById('task-priority').value = 'medium';
+                document.getElementById('task-date').value = new Date().toISOString().split('T')[0];
+                document.getElementById('task-title').focus();
+            },
+
+            openEditTaskModal(id) {
+                const task = this.allTasks.find(t => t.id === id);
+                if (!task) return;
+                
+                this.editingTaskId = id;
+                this.modalStatus = task.status;
+                
+                document.getElementById('modal-title').innerText = "Editar Tarea";
+                document.getElementById('modal-submit-btn').innerText = "Guardar Cambios";
+                
+                document.getElementById('task-title').value = task.title;
+                document.getElementById('task-priority').value = task.priority;
+                document.getElementById('task-tag').value = task.tag || '';
+                document.getElementById('task-date').value = task.date;
+                document.getElementById('task-desc').value = task.desc || '';
+                
+                document.getElementById('task-modal').classList.remove('hidden');
+                document.getElementById('task-title').focus();
+            },
+
+            closeTaskModal() { document.getElementById('task-modal').classList.add('hidden'); },
+
+            handleTaskSubmit(e) {
+                e.preventDefault();
+                
+                const title = document.getElementById('task-title').value;
+                const priority = document.getElementById('task-priority').value;
+                const tag = document.getElementById('task-tag').value.trim();
+                const date = document.getElementById('task-date').value;
+                const desc = document.getElementById('task-desc').value;
+
+                if (this.editingTaskId) {
+                    const index = this.allTasks.findIndex(t => t.id === this.editingTaskId);
+                    if (index !== -1) {
+                        this.allTasks[index] = {
+                            ...this.allTasks[index],
+                            title, priority, tag, date, desc
+                        };
+                    }
+                } else {
+                    const newTask = {
+                        id: Date.now(),
+                        boardId: this.currentBoardId,
+                        title, status: this.modalStatus || 'todo', priority, tag, date, desc,
+                        subtasks: []
+                    };
+                    this.allTasks.push(newTask);
+                }
+                
+                this.saveData();
+                this.renderKanban();
+                this.closeTaskModal();
+                e.target.reset();
+            },
+
+            deleteTask(id) {
+                if(confirm("¿Eliminar tarea?")) {
+                    this.allTasks = this.allTasks.filter(t => t.id !== id);
+                    this.saveData();
+                    this.renderKanban();
+                }
+            },
+
+            exportHTML() {
+                const content = document.documentElement.outerHTML;
+                const blob = new Blob([content], { type: 'text/html' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `Orbit_Pro_Export_${new Date().toISOString().slice(0,10)}.html`;
+                a.click();
+            },
+
+            applyAction(type, val) {
+                if(type === 'sort') {
+                    if(val === 'date') this.allTasks.sort((a,b) => new Date(a.date) - new Date(b.date));
+                    if(val === 'priority') {
+                        const weights = {high: 3, medium: 2, low: 1};
+                        this.allTasks.sort((a,b) => weights[b.priority] - weights[a.priority]);
+                    }
+                }
+                this.renderKanban();
+            }
+        };
+
+        window.onload = () => app.init();
+    </script>
+</body>
+</html>
